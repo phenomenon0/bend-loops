@@ -1,0 +1,17 @@
+# First live objective — activates when kernels-2 lands.
+# v0 NOTE: bench.py --case sha256 interface is provisional until the kernels-2
+# finisher commits tests/kernels/bench.py; confirm the metric line then.
+name = "kernels-sha256"
+dir = "/home/omen/Documents/Project/bend-work-kernels-loop"
+proposer_cmd = "bash /home/omen/Documents/Project/bend-loops/prompts/proposer.sh"
+judge_cmd = "bash /home/omen/Documents/Project/bend-loops/prompts/judge.sh"
+validate_cmd = "bash tests/kernels/run.sh && bash tests/kernels/run.sh --million && bun tests/kernels/proof.ts demos/kernels/PROOF.bend /tmp/loop-receipt.json"
+bench_cmd = "python3 -B tests/kernels/bench.py --case sha256"
+metric_regex = "median_ms=([0-9.]+)"
+direction = "min"
+repeats = 5
+patience = 3
+min_relative_delta = 0.03
+forbidden_paths = ["bend2/bend.ts", "bend2/main.ts", "gates/repo.ts", "tests/caps.sh", "demos/kernels/fips.bend", "demos/kernels/LAWS.bend"]
+max_iterations = 0
+commit_prefix = "loop(kernels-sha256):"
