@@ -1,12 +1,12 @@
-# First live objective — activates when kernels-2 lands.
-# v0 NOTE: bench.py --case sha256 interface is provisional until the kernels-2
-# finisher commits tests/kernels/bench.py; confirm the metric line then.
+# First live objective — kernels-2 landed (16 laws, bench.py real).
+# v0 NOTE: metric line: confirm bench.py --output JSON's per-case field name at
+# activation (one-line adjust); everything else is final for campaign #1.
 name = "kernels-sha256"
 dir = "/home/omen/Documents/Project/bend-work-kernels-loop"
 proposer_cmd = "bash /home/omen/Documents/Project/bend-loops/prompts/proposer.sh"
 judge_cmd = "bash /home/omen/Documents/Project/bend-loops/prompts/judge.sh"
-validate_cmd = "bash tests/kernels/run.sh && bash tests/kernels/run.sh --million && bun tests/kernels/proof.ts demos/kernels/PROOF.bend /tmp/loop-receipt.json"
-bench_cmd = "python3 -B tests/kernels/bench.py --case sha256"
+validate_cmd = "bash tests/kernels/run.sh && bun tests/kernels/proof.ts demos/kernels/PROOF.bend /tmp/loop-receipt.json"
+bench_cmd = "python3 -B tests/kernels/bench.py --case million-a --samples 3 --warmups 1 --output /tmp/loop-bench.json"
 metric_regex = "median_ms=([0-9.]+)"
 direction = "min"
 repeats = 5
