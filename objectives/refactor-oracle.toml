@@ -1,0 +1,23 @@
+# Campaign #1 (first real run): the refactor oracle — a Jev-shaped behavior-preservation
+# classifier (decision tree + one tiny pair) trained on bendlang/bend history, scored on a
+# temporal holdout (train: Rust-era 2023-2025 | holdout: bend2 rewrite, 2026-08-01+).
+# Mirrored at <dir>/objectives/refactor-oracle.toml. Interpreters are pinned: bare
+# `python3` on this machine resolves to a venv without scikit-learn.
+name = "refactor-oracle"
+dir = "/home/omen/Documents/Project/refactor-oracle"
+proposer_cmd = "bash prompts/propose.sh"
+judge_cmd = "/usr/bin/python3 judge.py"
+validate_cmd = "/usr/bin/python3 eval/validate.py"
+bench_cmd = "/usr/bin/python3 eval/evaluate.py"
+metric_regex = "oracle_auc=([0-9.]+)"
+direction = "max"
+repeats = 3
+patience = 4
+min_relative_delta = 0.01
+# the brief's four + the gate-bearing files (bendloop has no allowlist; validate.py
+# enforces "model/ only" from inside the gate)
+forbidden_paths = ["data", "eval", "tools", "upstream", "judge.py", "prompts", "objectives"]
+max_iterations = 12
+agent_timeout = 2700
+judge_timeout = 1800
+commit_prefix = "loop(refactor-oracle):"
