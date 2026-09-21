@@ -1,15 +1,18 @@
 # First live objective — kernels-2 landed (16 laws, bench.py real).
-# v0 NOTE: metric line: confirm bench.py --output JSON's per-case field name at
-# activation (one-line adjust); everything else is final for campaign #1.
+# v1.1 activation notes (confirmed on the box, 2026-09-21):
+#  - bench.py prints: "million-a: ok, median <s>s, all digests checked"
+#    so the metric is SECONDS (median 0.010670 = ~10.7 ms). Regex below matches it.
+#  - bench.py refuses to overwrite --output (retains raw evidence), so the path
+#    carries $$ (fresh per invocation — the loop runs the bench once per repeat).
 name = "kernels-sha256"
 dir = "/home/omen/Documents/Project/bend-work-kernels-loop"
 proposer_cmd = "bash /home/omen/Documents/Project/bend-loops/prompts/proposer.sh"
 judge_cmd = "bash /home/omen/Documents/Project/bend-loops/prompts/judge.sh"
 validate_cmd = "bash tests/kernels/run.sh && bun tests/kernels/proof.ts demos/kernels/PROOF.bend /tmp/loop-receipt.json"
-bench_cmd = "python3 -B tests/kernels/bench.py --case million-a --samples 3 --warmups 1 --output /tmp/loop-bench.json"
-metric_regex = "median_ms=([0-9.]+)"
+bench_cmd = "python3 -B tests/kernels/bench.py --case million-a --samples 3 --warmups 1 --output /tmp/loop-bench-$$.json"
+metric_regex = "median ([0-9.]+)s"
 direction = "min"
-repeats = 5
+repeats = 3
 patience = 3
 min_relative_delta = 0.03
 forbidden_paths = ["bend2/bend.ts", "bend2/main.ts", "gates/repo.ts", "tests/caps.sh", "demos/kernels/fips.bend", "demos/kernels/LAWS.bend"]
