@@ -15,6 +15,9 @@ that working tree (see #6).
    (`python3 eval/evaluate.py`) fails at baseline. Workaround: `/usr/bin/python3` is pinned
    in every contract command and in the proposer prompt. Fix: let the contract declare the
    interpreter/env, or document that commands run in the caller's env.
+   **FIXED v1.1:** contract `env = {...}` is merged over the operator's env (contract wins,
+   `${VAR}` expands) for every loop command. Pin with `PATH = "/usr/bin:${PATH}"`. Receipt:
+   selftest "contract env reaches every command"; `smoke/smoke.sh` validates via /usr/bin/python3.
 2. **[H] `judge_cmd` gets no evidence.** bendloop computes `diff = git diff` right before the
    judge and then never uses it. The judge gets only `LOOP_OBJECTIVE` and `LOOP_STATE`: no
    diff, no validation log, no candidate metric. `git diff` would also miss untracked
@@ -22,16 +25,30 @@ that working tree (see #6).
    and evaluate itself and builds its own diff (tracked + untracked). That doubles the gate
    cost per judged candidate (about 10 s here). Fix: pass `LOOP_DIFF_FILE`,
    `LOOP_VALIDATION_LOG` and `LOOP_CANDIDATE` in env.
+   **FIXED v1.1:** before the judge, bendloop writes `journals/evidence-<name>-<iter>.diff`
+   (status + tracked diff + untracked files in full) and `.vallog`, and passes `LOOP_DIFF_FILE`,
+   `LOOP_VALIDATION_LOG`, `LOOP_CANDIDATE`, `LOOP_BASELINE`, `LOOP_ITERATION`; JUDGE_POLICY
+   says read them first. Receipt: selftest (b). `prompts/judge.sh` still builds its own
+   tracked-only diff — switch it to `$LOOP_DIFF_FILE` (out of the v1.1 scope).
 3. **[M] The proposer's stdout is discarded.** Only `rc` reaches the journal (and only on
    error). Its reasoning and measured claims are lost. Workaround: `tee runs/proposer-<ts>.txt`.
+   **FIXED v1.1:** stdout+stderr always go to `journals/proposer-<name>-<iter>.txt` (partial
+   output on timeout too); every journal entry of the iteration carries `proposer_out`.
+   Receipt: selftest (f).
 4. **[M] `LOOP_STATE` has no history.** It carries only `{best_metric, direction, iteration}`,
    not the prior attempts or the judge's reject reasons, so a one-shot proposer can repeat a
    rejected idea. Workaround: the proposer prompt points at the journal. Fix: include the last N
    journal entries in `LOOP_STATE`.
+   **FIXED v1.1:** `LOOP_STATE.recent` = the last ≤8 journal entries (verdict, cand/best, first
+   line of the reason, `proposer_out`), plus `objective_name`. A `no-change` entry has no
+   content of its own; what was tried lives in the `proposer_out` transcript it points at.
+   Receipt: selftest (e).
 5. **[H] `forbidden_paths` is a denylist only.** A proposal that adds a new root file
    (`hack.py`, `conftest.py`, `sitecustomize.py`) passes the harness check. Workaround:
    validate.py enforces a `model/`-only allowlist from inside the gate, and the contract
    also forbids `judge.py`, `prompts` and `objectives`. Fix: an `editable_paths` allowlist.
+   **FIXED v1.1:** `editable_paths`; anything outside it is reset and journaled `forbidden`,
+   `forbidden_paths` still applies inside it. Receipt: selftest (c) + the forbidden-inside check.
 6. **[M] The target repo is the loop's exclusive workspace.** Any operator edit mid-run is
    `git checkout -- . && git clean -fd`'d on the next reject, or swept into the next
    accept's `git add -A`. Notes, reports and tools must live elsewhere during the run.
@@ -42,13 +59,20 @@ that working tree (see #6).
    proposer that exceeds `agent_timeout` (or a hung judge or bench) raises out of
    `run_contract`. The loop dies mid-iteration with a dirty tree and no journal entry for that
    iteration. Workaround: generous timeouts (agent 2700 s, judge 1800 s).
+   **FIXED v1.1:** a timeout in proposer/validate/bench/judge journals `<role>-timeout`, kills
+   the command's process group, resets the tree, stale += 1, and the loop continues; any other
+   exception resets, journals `crash` + traceback, exits 1. Receipt: selftest (a) + crash check.
 9. **[L] Two judge policies.** bendloop's `JUDGE_POLICY` is speed-oriented ("concrete
    performance mechanism", "speed gates"). Non-speed objectives need an addendum.
    judge.py imports `JUDGE_POLICY` and appends a campaign addendum that reframes "mechanism"
    as generalization. In the smoke test GLM applied both coherently.
+   **FIXED v1.1:** contract `judge_policy_addendum`, appended to JUDGE_POLICY and handed to the
+   judge as `$LOOP_JUDGE_POLICY`. Receipt: selftest "judge_policy_addendum appended".
 10. **[M] bendq has no add-claim or status command.** It only indexes markdown under
     `docs/omen/**`, `demos/kernels/*.md` and `power/**`. Workaround: claims are written as
     `docs/omen/refactor-oracle-claims.md` in the campaign repo, then `bendq.py index`.
+    **FIXED v1.1:** `bendq.py add --source <path> --status checked|conjecture|tested --claim
+    "..."` and `bendq.py list`; index/query unchanged. Receipt: selftest "bendq add/list".
 11. **[H] Proposer isolation is honor-system.** The proposer is an agent with a full shell
     in the campaign dir. It *could* read `data/holdout.jsonl` and tune to it: the eval
     sandbox protects the model at run time, not the proposer at write time. Defenses in
@@ -71,6 +95,7 @@ that working tree (see #6).
     iterations with no hint beyond `rc=1`. Workaround: prompt on stdin. bendloop angle
     (**M**): proposer-error journals only `rc`, not stderr, so this failure mode is opaque
     from the journal.
+    **FIXED v1.1 (bendloop angle):** stderr lands in the proposer transcript (see #3).
 15. **[L] `--dry-run` tests little.** With no proposer, every dry iteration is "no-change".
     It proves the baseline validate+bench gates run (13.6 s here) and that patience counts
     no-change, but it never exercises validate/bench/judge on a candidate. The baseline
@@ -115,6 +140,7 @@ Loop launched 2026-09-21 01:16:06 local (06:16:06Z) (bendloop.py AS-IS, contract
     are only in the journal plus the campaign's own `runs/` receipts.
   - [L] The journal's `reason` is `jout[-1500:]`, the tail of the judge output. Long judge
     replies lose their first line (the verdict) and the start of the reasoning in the journal.
+    **FIXED v1.1:** `jout[:1500]`.
 - **iter 2: no-change (stale 1/4), ~4.3 min.** The proposer tried 3 ideas on the holdout, none
   beat 0.6667, and it reverted all three. On its own it built a train-only temporal CV and
   screened more variants there before touching the holdout. It left a useful negative
@@ -157,6 +183,9 @@ Loop launched 2026-09-21 01:16:06 local (06:16:06Z) (bendloop.py AS-IS, contract
     a contract gap: one scalar metric, no per-slice floor or guard. A contract field like
     `guard_regex` (the "pos|neg_commit must not drop" kind) would let the loop say "improve X
     without regressing Y".
+    **FIXED v1.1:** `guard_slices = [{name, regex, direction, min_relative_delta}]`, checked
+    against the best's slice values; a breach rejects with `slice-guard: <name>`, and slice
+    values go in the journal. Receipt: selftest (d); `smoke/smoke.sh` iter 2.
   - [+] Proposer discipline improved without being asked: it screened three more ideas on
     train temporal CV *only* and took just one to the holdout.
 - **iter 5: no-change (stale 1/4), ~3.2 min.** Of its three ideas, two went to the holdout
@@ -228,6 +257,7 @@ Loop launched 2026-09-21 01:16:06 local (06:16:06Z) (bendloop.py AS-IS, contract
     Iterations 7-9 spent about 60% of their holdout looks re-measuring known losers. Fix: a
     "tried & failed" digest in LOOP_STATE (the last N proposer summaries), or have the
     journal store the proposer's final message.
+    **FIXED v1.1:** `LOOP_STATE.recent` + proposer transcripts (see #3, #4).
   - [+] The proposer again refused the obvious gaming move ("making the model lean harder on
     signed net would be tuning to the holdout").
   - Tally: 22 holdout looks, 3 winners.
@@ -266,6 +296,7 @@ Loop launched 2026-09-21 01:16:06 local (06:16:06Z) (bendloop.py AS-IS, contract
   first line (`ACCEPT`/`REJECT`, the part the verdict is parsed from) is gone. Only iter 6's
   short reply (the 1.6 s one) survived intact. The verdict field is still right, but the
   stored rationale has no head. Fix: `jout[:1500]`, or head+tail.
+  **FIXED v1.1:** `jout[:1500]`.
 - **[M] The journal has no per-iteration cost or timing** (no wall time for
   proposer/validate/bench/judge, no token usage). I reconstructed per-iter wall times from
   the `runs/proposer-<ts>.txt` filenames that `propose.sh` writes, which are not bendloop's.
@@ -275,3 +306,21 @@ Loop launched 2026-09-21 01:16:06 local (06:16:06Z) (bendloop.py AS-IS, contract
   it needed. The rough edges were all around the proposer (CLI flags, stdout discarded,
   commits bypassing gates) and the judge (evidence, policy duplication), not the target
   type.
+
+## v1.1 status
+
+All ten fixes in the v1.1 brief landed; none deferred. Receipts: `python3 bendloop.py
+selftest` (15/15 PASS; reverting any one fix makes its check FAIL) and `bash smoke/smoke.sh`.
+Found and fixed while there:
+- A staged rename (`git mv forbidden.py x.py`) reached the path checks as the single
+  porcelain entry `forbidden.py -> x.py` and slipped past `forbidden_paths`. The change
+  list is now `git diff --name-only --no-renames HEAD` + untracked, both sides of a rename.
+- Reset was `git checkout -- . && git clean -fd`, which left staged changes in the tree for
+  the next proposer. Now `git reset --hard` + `git clean -fd`, also on proposer-error.
+
+Still open: #6 (exclusive workspace), #7 (`repeats` on deterministic metrics), #11
+(proposer sandbox), #12 (judge only on improved), #13 (HEAD moved by a proposer commit),
+#15 (dry-run coverage, baseline not journaled); iter 1 significance/CI and the sealed
+test split; iter 6 slices are journaled but not handed to the judge; judge
+quality/provider logging; per-iteration timing; `prompts/judge.sh` still carries its own
+diff and `prompts/judge-policy.md` (see #2, #9).

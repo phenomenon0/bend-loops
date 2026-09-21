@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""bendq — one queryable evidence store for the Bend business. Stdlib only."""
-import sqlite3, sys, re
+"""bendq — one queryable evidence store for the Bend business. Stdlib only.
+
+    bendq.py index <repo> | query <terms> | stats
+    bendq.py add --source <path> --status <checked|conjecture|tested> --claim "..."
+    bendq.py list                                   # the 20 most recent claims
+"""
+import argparse, os, sqlite3, sys, re, time
 from pathlib import Path
-DB = Path.home() / ".local" / "state" / "bendq" / "evidence.db"
+DB = Path(os.environ.get("BENDQ_DB") or Path.home() / ".local" / "state" / "bendq" / "evidence.db")
+STATUSES = ("checked", "conjecture", "tested")
 
 def conn():
     DB.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB)
     db.execute("CREATE TABLE IF NOT EXISTS docs(path TEXT PRIMARY KEY, repo TEXT, mtime REAL, text TEXT)")
+    db.execute("CREATE TABLE IF NOT EXISTS claims(id INTEGER PRIMARY KEY, ts REAL, source TEXT, status TEXT, claim TEXT)")
     return db
 
 def index(repo):
@@ -35,6 +42,19 @@ def query(q, k=4):
         if len(seen) >= k: break
     if not seen: print("(no matches — indexed repos: check `bendq.py stats`)")
 
+def add(argv):
+    ap = argparse.ArgumentParser(prog="bendq.py add")
+    ap.add_argument("--source", required=True); ap.add_argument("--status", required=True, choices=STATUSES)
+    ap.add_argument("--claim", required=True)
+    a = ap.parse_args(argv); db = conn()
+    db.execute("INSERT INTO claims(ts, source, status, claim) VALUES(?,?,?,?)",
+               (time.time(), str(Path(a.source).resolve()), a.status, a.claim))
+    db.commit(); print(f"added [{a.status}] {a.claim}")
+
+def list_claims(n=20):
+    for ts, source, status, claim in conn().execute("SELECT ts, source, status, claim FROM claims ORDER BY id DESC LIMIT ?", (n,)):
+        print(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(ts))}  [{status}] {claim}\n  <- {source}")
+
 def stats():
     db = conn()
     for repo, n in db.execute("SELECT repo, count(*) FROM docs GROUP BY repo"):
@@ -44,4 +64,6 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "index": index(sys.argv[2])
     elif len(sys.argv) >= 3 and sys.argv[1] == "query": query(" ".join(sys.argv[2:]))
     elif len(sys.argv) >= 2 and sys.argv[1] == "stats": stats()
+    elif len(sys.argv) >= 2 and sys.argv[1] == "add": add(sys.argv[2:])
+    elif len(sys.argv) >= 2 and sys.argv[1] == "list": list_claims()
     else: print(__doc__)
